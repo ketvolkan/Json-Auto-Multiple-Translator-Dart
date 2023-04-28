@@ -3,39 +3,93 @@ import 'dart:io';
 import 'package:translator/translator.dart';
 
 void main() async {
-  File willTranslateFile = File('will_translate.json');
+  File willTranslateFile = File('../assets/locales/localiaztion_utils/will_translate.json'); //* Proje içerisindeki will localize dosyası
+  File currentTr = File('../assets/locales/tr_TR.json');
   Map<String, File> translatedFiles = {
-    'tr': File('locales/tr_TR.json'),
-    'en': File('locales/en_US.json'),
-    'ar': File('locales/ar_AE.json'),
-    'nl': File('locales/nl_NL.json'),
-    'ru': File('locales/ru_RU.json'),
+    //* Proje içerisindeki dil json dosyaları
+    'tr': File('../assets/locales/tr_TR.json'),
+    'en': File('../assets/locales/en_US.json'),
+    'ar': File('../assets/locales/ar_AE.json'),
+    'nl': File('../assets/locales/nl_NL.json'),
+    'ru': File('../assets/locales/ru_RU.json'),
   };
   final willTranslateString = await willTranslateFile.readAsString();
+
   final Map<String, dynamic> willTranslateJson = jsonDecode(willTranslateString);
   for (var lang in translatedFiles.keys) {
-    final translatedJson = await translate(lang, willTranslateJson);
-    translatedFiles[lang].writeAsString(translatedJson);
+    var translatedJson = await translate(lang, willTranslateJson);
+    var readedFile = await translatedFiles[lang]?.readAsString();
+    translatedJson = writeForAdd(readedFile ?? "", translatedJson);
+    translatedFiles[lang]?.writeAsString(translatedJson);
+    if (lang == "tr") currentTr.writeAsString(translatedJson);
   }
+
   processPrint("Complated");
+  willTranslateFile.writeAsString("{}");
+}
+
+String writeForAdd(String current, String willAdd) {
+  if (willAdd.isEmpty) return current + "}";
+  current = current.substring(0, current.length - 1);
+  willAdd = willAdd.replaceFirst("{", "");
+  willAdd = willAdd.substring(0, willAdd.length - 1);
+  if (willAdd.isNotEmpty) willAdd = current + "," + willAdd + "}";
+  if (willAdd.isEmpty) willAdd = current + "}";
+  return willAdd;
 }
 
 Future<String> translate(String lang, Map<String, dynamic> willTranslateJson) async {
   final translator = GoogleTranslator();
   Map<String, dynamic> newJson = {};
-  int count = 1;
   processPrint(lang);
   for (var element in willTranslateJson.entries) {
     try {
+      if (element.value is Map<String, dynamic>) {
+        newJson[element.key] = await translateMapVariables(element, translator, lang, newJson);
+        continue;
+      }
       var translation = await translator.translate(element.value, from: 'tr', to: lang);
+      print(translation.text);
       newJson.addAll({element.key: translation.text});
-      print('$count : $translation');
     } catch (e) {
       print(e.toString());
     }
-    count++;
   }
-  return jsonEncode(newJson);
+  String jsonEncoded = jsonEncodeCustom(newJson);
+  return jsonEncoded;
+}
+
+Future<Map<String, dynamic>> translateMapVariables(
+    MapEntry<String, dynamic> element, GoogleTranslator translator, String lang, Map<String, dynamic> newJson) async {
+  Map<String, dynamic> texts = {};
+  for (var elementValue in (element.value as Map<String, dynamic>).entries) {
+    var translation = await translator.translate(elementValue.value, from: 'tr', to: lang);
+    print(translation.text);
+    texts[elementValue.key] = translation.text;
+  }
+
+  return texts;
+}
+
+//*For Custom dynamic type
+String jsonEncodeCustom(Map<String, dynamic> newJson) {
+  String jsonEncoded = "{";
+  newJson.forEach((key, value) {
+    jsonEncoded += '"${key}":';
+    if (value is! Map<String, dynamic>) jsonEncoded += '"${value}",';
+    if (value is Map<String, dynamic>) {
+      jsonEncoded += "{";
+      value.forEach((key2, value2) {
+        jsonEncoded += '"${key2}":';
+        jsonEncoded += '"${value2}",';
+      });
+      jsonEncoded = jsonEncoded.substring(0, jsonEncoded.length - 1);
+      jsonEncoded += "},";
+    }
+  });
+  jsonEncoded = jsonEncoded.substring(0, jsonEncoded.length - 1);
+  jsonEncoded += "}";
+  return jsonEncoded;
 }
 
 void processPrint(String str) {
